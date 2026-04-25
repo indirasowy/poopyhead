@@ -1,0 +1,22 @@
+{
+  "name": "poopyhead",
+  "version": "1.0.0",
+  "description": "A realtime lobby-based Poopy Head card game.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "test": "node server/game.test.js",
+    "test:integration": "node server/integration.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.22.1",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}
