@@ -2,6 +2,18 @@
 
 A realtime browser version of Poopy Head with linkable lobbies for 2 to 10 players.
 
+## Deploy
+
+[Deploy to Render](https://render.com/deploy?repo=https://github.com/indirasowy/poopyhead)
+
+Render is the recommended free hosting path for this app because the game server uses Socket.IO WebSockets and in-memory lobby state. Use the included `render.yaml` Blueprint to create one web service:
+
+- Build command: `npm install`
+- Start command: `npm start`
+- Environment: `NODE_ENV=production`
+
+After Render finishes the first deploy, open the `.onrender.com` URL, create a lobby, and send that lobby link to other players.
+
 ## Run
 
 ```bash
