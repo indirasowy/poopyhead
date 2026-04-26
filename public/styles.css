@@ -461,10 +461,14 @@ input:focus {
   font-weight: 900;
 }
 
-.card[data-suit="H"],
-.card[data-suit="D"],
-.card[data-color="red"] {
+.card[data-color="red"] .rank,
+.card[data-color="red"] .suit {
   color: #9b2929;
+}
+
+.card[data-color="black"] .rank,
+.card[data-color="black"] .suit {
+  color: #17140f;
 }
 
 .card.back {

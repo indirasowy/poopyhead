@@ -124,4 +124,54 @@ function makePlayingRoom() {
   assert.equal(view.legal.needsFaceUpPickupChoice, true);
 }
 
+{
+  const room = createRoom("SORT");
+  room.hostId = "p1";
+  room.players = [
+    {
+      id: "p1",
+      name: "One",
+      connected: true,
+      hand: [],
+      faceUp: [],
+      blind: [],
+      table: [],
+      prepared: false,
+      out: false,
+    },
+    {
+      id: "p2",
+      name: "Two",
+      connected: true,
+      hand: [],
+      faceUp: [],
+      blind: [],
+      table: [],
+      prepared: false,
+      out: false,
+    },
+  ];
+  room.deck = [
+    card("3", "three"),
+    card("2", "two"),
+    card("A", "ace"),
+    card("4", "four"),
+    card("7", "seven"),
+    card("K", "king"),
+    card("5", "five"),
+    card("9", "nine"),
+    card("8", "eight"),
+    card("J", "jack"),
+  ];
+  room.status = "setup";
+  room.firstMoveDone = true;
+  room.currentPlayerId = "p1";
+  room.players[0].hand = [card("3", "three"), card("4", "four"), card("A", "ace"), card("2", "two")];
+  const view = serializeRoom(room, "p1");
+  assert.deepEqual(
+    view.players[0].hand.map((handCard) => handCard.rank),
+    ["4", "A", "2", "3"]
+  );
+}
+
 console.log("game tests passed");

@@ -10,6 +10,27 @@ const SUIT_SYMBOLS = {
   D: "♦",
   C: "♣",
 };
+const HAND_SORT_ORDER = {
+  "4": 0,
+  "5": 1,
+  "6": 2,
+  "7": 3,
+  "8": 4,
+  "9": 5,
+  "10": 6,
+  J: 7,
+  Q: 8,
+  K: 9,
+  A: 10,
+  "2": 11,
+  "3": 12,
+};
+const SUIT_SORT_ORDER = {
+  S: 0,
+  H: 1,
+  D: 2,
+  C: 3,
+};
 const RANK_VALUES = {
   "2": 2,
   "3": 3,
@@ -177,6 +198,7 @@ function drawToMinimum(room, player) {
       player.hand.push(card);
     }
   }
+  sortPlayerHand(player);
 }
 
 function startGame(room, requesterId) {
@@ -204,7 +226,7 @@ function startGame(room, requesterId) {
   room.currentPlayerId = null;
 
   for (const player of room.players) {
-    player.hand = drawCards(room, room.handSize);
+    player.hand = sortCards(drawCards(room, room.handSize));
     player.blind = drawCards(room, 3);
     player.faceUp = [];
     player.table = player.blind.map((blind) => ({ blind, faceUp: null }));
@@ -241,6 +263,7 @@ function chooseFaceUp(room, playerId, cardIds) {
   }
 
   player.hand = player.hand.filter((card) => !uniqueIds.includes(card.id));
+  sortPlayerHand(player);
   const slots = ensureTableSlots(player);
   for (let index = 0; index < slots.length; index += 1) {
     slots[index].faceUp = selected[index] || null;
@@ -409,6 +432,7 @@ function playBlindCard(room, player, cardIds) {
   if (!canPlayRank(room, card.rank)) {
     const pickedUp = room.discard.splice(0);
     player.hand.push(...pickedUp, card);
+    sortPlayerHand(player);
     addLog(room, `${player.name} flipped ${formatCards([card])} and picked up the pile.`);
     touch(room);
     advanceTurn(room, 0);
@@ -473,6 +497,7 @@ function pickUpPile(room, playerId, faceUpCardId) {
     }
     const pickedUp = room.discard.splice(0);
     player.hand.push(...pickedUp);
+    sortPlayerHand(player);
     addLog(room, `${player.name} picked up the pile.`);
     advanceTurn(room, 0);
     touch(room);
@@ -499,6 +524,7 @@ function pickUpPile(room, playerId, faceUpCardId) {
     syncTableArrays(player);
     const pickedUp = room.discard.splice(0);
     player.hand.push(...pickedUp, tableCard);
+    sortPlayerHand(player);
     addLog(room, `${player.name} picked up the pile and ${formatCards([tableCard])}.`);
     advanceTurn(room, 0);
     touch(room);
@@ -683,6 +709,20 @@ function formatCards(cards) {
   return cards.map((card) => card.label).join(", ");
 }
 
+function sortCards(cards) {
+  return [...cards].sort((a, b) => {
+    const rankDiff = HAND_SORT_ORDER[a.rank] - HAND_SORT_ORDER[b.rank];
+    if (rankDiff !== 0) {
+      return rankDiff;
+    }
+    return (SUIT_SORT_ORDER[a.suit] ?? 99) - (SUIT_SORT_ORDER[b.suit] ?? 99);
+  });
+}
+
+function sortPlayerHand(player) {
+  player.hand = sortCards(player.hand);
+}
+
 function publicCard(card) {
   return {
     id: card.id,
@@ -797,7 +837,7 @@ function serializeRoom(room, viewerId) {
       prepared: player.prepared,
       totalCount: totalCards(player),
       handCount: player.hand.length,
-      hand: player.id === viewerId ? player.hand.map(publicCard) : [],
+      hand: player.id === viewerId ? sortCards(player.hand).map(publicCard) : [],
       table: serializeTable(player, player.id === viewerId),
       faceUp: getFaceUpCards(player).map(publicCard),
       blindCount: getBlindCards(player).length,
