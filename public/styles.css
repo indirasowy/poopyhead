@@ -316,18 +316,30 @@ input:focus {
   padding: 10px 12px;
 }
 
+.player-row > .badge,
+.opponent-head > .mini-counts {
+  flex: 0 0 auto;
+}
+
 .player-name {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   gap: 8px;
   min-width: 0;
+  max-width: 100%;
   font-weight: 850;
 }
 
 .player-name span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.player-name .badge {
+  flex: 0 0 auto;
 }
 
 .badge {
@@ -594,6 +606,7 @@ input:focus {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 
 .opponent-cards {
@@ -706,6 +719,37 @@ input:focus {
 .toast.show {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+.poop-rain {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.poop-rain span {
+  position: absolute;
+  top: -56px;
+  left: var(--x);
+  font-size: var(--size);
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.38));
+  animation: poop-fall var(--duration) linear var(--delay) infinite;
+}
+
+@keyframes poop-fall {
+  from {
+    transform: translate3d(-12px, -70px, 0) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(18px, calc(100vh + 80px), 0) rotate(340deg);
+    opacity: 0.9;
+  }
 }
 
 @media (max-width: 1080px) {

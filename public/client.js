@@ -4,6 +4,7 @@ const toast = document.getElementById("toast");
 const seatKey = new URLSearchParams(window.location.search).get("seat");
 const CLIENT_ID_KEY = seatKey ? `poopyhead.clientId.${seatKey}` : "poopyhead.clientId";
 const NAME_KEY = "poopyhead.name";
+const MAX_NAME_LENGTH = 18;
 const SUIT_SYMBOLS = {
   S: "♠",
   H: "♥",
@@ -118,6 +119,11 @@ function handleAction(action) {
     return;
   }
 
+  if (action === "resetRound") {
+    emit("resetRound", {}, clearSelection);
+    return;
+  }
+
   if (action === "autoPick") {
     autoPickFaceUp();
     return;
@@ -156,13 +162,20 @@ function handleAction(action) {
 
 function readName() {
   const input = getNameInput();
-  const name = input ? input.value.trim() : "";
+  const name = normalizeName(input ? input.value : "");
   if (!name) {
     showToast("Enter your name.");
     return "";
   }
+  if (input) {
+    input.value = name;
+  }
   saveName(name);
   return name;
+}
+
+function normalizeName(name) {
+  return String(name || "").trim().replace(/\s+/g, " ").slice(0, MAX_NAME_LENGTH);
 }
 
 function emit(eventName, payload, onOk) {
@@ -193,7 +206,7 @@ function render() {
     return;
   }
 
-  app.innerHTML = `${renderTopbar()}${renderGame()}`;
+  app.innerHTML = `${renderTopbar()}${renderGame()}${renderPoopRain()}`;
 }
 
 function renderTopbar() {
@@ -215,7 +228,7 @@ function renderTopbar() {
 
 function renderEntry() {
   const routeRoomId = getRouteRoomId();
-  const savedName = localStorage.getItem(NAME_KEY) || "";
+  const savedName = normalizeName(localStorage.getItem(NAME_KEY) || "");
   const joinTitle = routeRoomId ? `Join Room ${escapeHtml(routeRoomId)}` : "Create Or Join";
   const joinText = routeRoomId
     ? "Pick a name and sit down at the table."
@@ -235,7 +248,7 @@ function renderEntry() {
         <h2>${joinTitle}</h2>
         <p>${joinText}</p>
         <div class="form-grid">
-          <input id="playerName" autocomplete="name" maxlength="24" placeholder="Your name" value="${escapeHtml(
+          <input id="playerName" autocomplete="name" maxlength="${MAX_NAME_LENGTH}" placeholder="Your name" value="${escapeHtml(
             savedName
           )}" data-enter-action="${routeRoomId ? "joinRoom" : "createRoom"}" />
           ${roomInput}
@@ -392,9 +405,10 @@ function renderTable() {
 
 function renderFinished() {
   const poopyhead = state.players.find((player) => player.id === state.poopyheadId);
-  return poopyhead
+  const title = poopyhead
     ? `<strong>${escapeHtml(poopyhead.name)} is the Poopyhead</strong>`
     : "<strong>Game finished</strong>";
+  return `${title}<button class="ghost-button" data-action="resetRound" type="button">Reset Round</button>`;
 }
 
 function renderYourBoard() {
@@ -403,12 +417,7 @@ function renderYourBoard() {
   const legalSources = getLegalSources();
   const selectedCount = selectedIds.size;
   const isPlaying = state.status === "playing";
-  const canPlay =
-    isPlaying &&
-    legal.isYourTurn &&
-    selectedCount > 0 &&
-    legalSources.includes(selectedSource) &&
-    (!legal.needsFaceUpPickupChoice || false);
+  const canPlay = isPlaying && legal.isYourTurn && selectedCount > 0 && selectedCanPlay(legalSources, legal);
   const canPickUp =
     isPlaying &&
     legal.canPickUp &&
@@ -624,7 +633,8 @@ function toggleCard(source, cardId) {
   }
 
   const playableIds = source === "hand" ? legal.playableHandIds || [] : legal.playableFaceUpIds || [];
-  if (!playableIds.includes(cardId)) {
+  const selectingForPickup = legal.needsFaceUpPickupChoice && source === "faceUp";
+  if (!selectingForPickup && !playableIds.includes(cardId)) {
     showToast("That card cannot be played here.");
     return;
   }
@@ -634,7 +644,13 @@ function toggleCard(source, cardId) {
     selectedSource = source;
   }
 
-  if (selectedIds.has(cardId)) {
+  if (source === "faceUp") {
+    if (selectedIds.has(cardId) && selectedIds.size === 1) {
+      selectedIds = new Set();
+    } else {
+      selectedIds = new Set([cardId]);
+    }
+  } else if (selectedIds.has(cardId)) {
     selectedIds.delete(cardId);
   } else {
     const selectedCards = [...selectedIds].map((id) => findYourCard(source, id)).filter(Boolean);
@@ -645,6 +661,24 @@ function toggleCard(source, cardId) {
   }
 
   render();
+}
+
+function selectedCanPlay(legalSources, legal) {
+  if (!selectedSource || !legalSources.includes(selectedSource) || selectedIds.size === 0) {
+    return false;
+  }
+
+  const ids = [...selectedIds];
+  if (selectedSource === "hand") {
+    return ids.every((id) => (legal.playableHandIds || []).includes(id));
+  }
+  if (selectedSource === "faceUp") {
+    return ids.length === 1 && ids.every((id) => (legal.playableFaceUpIds || []).includes(id));
+  }
+  if (selectedSource === "blind") {
+    return ids.length === 1 && ids.every((id) => (legal.playableBlindIds || []).includes(id));
+  }
+  return false;
 }
 
 function autoPickFaceUp() {
@@ -715,6 +749,20 @@ function showToast(message) {
   toastTimer = setTimeout(() => {
     toast.classList.remove("show");
   }, 2400);
+}
+
+function renderPoopRain() {
+  if (!state || state.status !== "finished" || state.poopyheadId !== state.yourId) {
+    return "";
+  }
+
+  return `<div class="poop-rain" aria-hidden="true">${Array.from({ length: 36 }, (_, index) => {
+    const x = (index * 37) % 100;
+    const delay = (index % 12) * 180;
+    const duration = 2400 + (index % 7) * 240;
+    const size = 22 + (index % 5) * 5;
+    return `<span style="--x:${x}%;--delay:${delay}ms;--duration:${duration}ms;--size:${size}px">&#128169;</span>`;
+  }).join("")}</div>`;
 }
 
 function escapeHtml(value) {

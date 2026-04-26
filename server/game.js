@@ -2,6 +2,7 @@ const crypto = require("crypto");
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 10;
+const MAX_NAME_LENGTH = 18;
 const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 const SUITS = ["S", "H", "D", "C"];
 const SUIT_SYMBOLS = {
@@ -61,6 +62,7 @@ function createRoom(id) {
     currentPlayerId: null,
     firstMoveDone: false,
     poopyheadId: null,
+    preferredStarterId: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -75,7 +77,7 @@ function makeRoomId(existingIds = new Set()) {
 }
 
 function sanitizeName(name) {
-  const clean = String(name || "").trim().replace(/\s+/g, " ").slice(0, 24);
+  const clean = String(name || "").trim().replace(/\s+/g, " ").slice(0, MAX_NAME_LENGTH);
   return clean || "Player";
 }
 
@@ -209,6 +211,19 @@ function startGame(room, requesterId) {
     throw new Error("Only the host can start the game.");
   }
 
+  dealRound(room, null);
+}
+
+function resetRound(room, requesterId) {
+  if (room.status !== "finished") {
+    throw new Error("The round is not finished yet.");
+  }
+  getPlayer(room, requesterId);
+  const previousPoopyheadId = room.poopyheadId;
+  dealRound(room, previousPoopyheadId);
+}
+
+function dealRound(room, preferredStarterId) {
   room.players = room.players.filter((player) => player.connected);
   if (room.players.length < MIN_PLAYERS) {
     throw new Error("Poopy Head needs at least 2 players.");
@@ -224,6 +239,7 @@ function startGame(room, requesterId) {
   room.firstMoveDone = false;
   room.poopyheadId = null;
   room.currentPlayerId = null;
+  room.preferredStarterId = room.players.some((player) => player.id === preferredStarterId) ? preferredStarterId : null;
 
   for (const player of room.players) {
     player.hand = sortCards(drawCards(room, room.handSize));
@@ -283,20 +299,34 @@ function finishSetup(room) {
     drawToMinimum(room, player);
   }
 
-  ensureStartingFour(room);
-  const starter = room.players.find((player) => player.hand.some((card) => card.rank === "4")) || room.players[0];
+  ensureStartingFour(room, room.preferredStarterId);
+  const preferredStarter = room.players.find((player) => player.id === room.preferredStarterId) || null;
+  const starter = preferredStarter || room.players.find((player) => player.hand.some((card) => card.rank === "4")) || room.players[0];
   room.currentPlayerId = starter.id;
   room.status = "playing";
+  room.preferredStarterId = null;
   touch(room);
   addLog(room, `${starter.name} starts. The opening play must be a 4.`);
 }
 
-function ensureStartingFour(room) {
-  if (room.players.some((player) => player.hand.some((card) => card.rank === "4"))) {
+function ensureStartingFour(room, preferredStarterId) {
+  const preferredStarter = room.players.find((player) => player.id === preferredStarterId);
+  if (preferredStarter) {
+    if (preferredStarter.hand.some((card) => card.rank === "4")) {
+      return;
+    }
+    moveFourToPlayer(room, preferredStarter);
     return;
   }
 
+  if (room.players.some((player) => player.hand.some((card) => card.rank === "4"))) {
+    return;
+  }
   const target = room.players[0];
+  moveFourToPlayer(room, target);
+}
+
+function moveFourToPlayer(room, target) {
   const found = takeFirstFour(room);
   if (!found || target.hand.length === 0) {
     return;
@@ -307,9 +337,23 @@ function ensureStartingFour(room) {
   const swapCard = target.hand[handIndex];
   target.hand[handIndex] = found.card;
   found.replace(swapCard);
+  sortPlayerHand(target);
 }
 
 function takeFirstFour(room) {
+  for (const player of room.players) {
+    const handIndex = player.hand.findIndex((card) => card.rank === "4");
+    if (handIndex >= 0) {
+      return {
+        card: player.hand[handIndex],
+        replace(replacement) {
+          player.hand[handIndex] = replacement;
+          sortPlayerHand(player);
+        },
+      };
+    }
+  }
+
   const deckIndex = room.deck.findIndex((card) => card.rank === "4");
   if (deckIndex >= 0) {
     return {
@@ -393,6 +437,9 @@ function playFaceUpCards(room, player, cardIds) {
   const selected = getSelectedCards(faceUpCards, cardIds);
   if (selected.length === 0) {
     throw new Error("Choose a face-up card to play.");
+  }
+  if (selected.length > 1) {
+    throw new Error("Play face-up table cards one at a time.");
   }
   const rank = selected[0].rank;
   if (selected.some((card) => card.rank !== rank)) {
@@ -492,9 +539,6 @@ function pickUpPile(room, playerId, faceUpCardId) {
   const activeZone = getActiveZone(room, player);
 
   if (activeZone === "hand") {
-    if (hasPlayableCard(room, player.hand)) {
-      throw new Error("You still have a playable card.");
-    }
     const pickedUp = room.discard.splice(0);
     player.hand.push(...pickedUp);
     sortPlayerHand(player);
@@ -506,12 +550,14 @@ function pickUpPile(room, playerId, faceUpCardId) {
 
   if (activeZone === "faceUp" || activeZone === "table") {
     const faceUpCards = getFaceUpCards(player);
-    const unlockedBlindCards = getUnlockedBlindCards(player);
-    if (hasPlayableCard(room, faceUpCards)) {
-      throw new Error("One of your face-up cards can be played.");
-    }
-    if (unlockedBlindCards.length > 0) {
-      throw new Error("Flip an uncovered blind card.");
+    if (faceUpCards.length === 0) {
+      const pickedUp = room.discard.splice(0);
+      player.hand.push(...pickedUp);
+      sortPlayerHand(player);
+      addLog(room, `${player.name} picked up the pile.`);
+      advanceTurn(room, 0);
+      touch(room);
+      return;
     }
     const slot = ensureTableSlots(player).find(
       (candidate) => candidate.faceUp && candidate.faceUp.id === faceUpCardId
@@ -531,7 +577,12 @@ function pickUpPile(room, playerId, faceUpCardId) {
     return;
   }
 
-  throw new Error("Flip a blind card.");
+  const pickedUp = room.discard.splice(0);
+  player.hand.push(...pickedUp);
+  sortPlayerHand(player);
+  addLog(room, `${player.name} picked up the pile.`);
+  advanceTurn(room, 0);
+  touch(room);
 }
 
 function getSelectedCards(cards, cardIds) {
@@ -541,10 +592,6 @@ function getSelectedCards(cards, cardIds) {
     throw new Error("One of those cards is not available.");
   }
   return selected;
-}
-
-function hasPlayableCard(room, cards) {
-  return cards.some((card) => canPlayRank(room, card.rank));
 }
 
 function canPlayRank(room, rank) {
@@ -876,11 +923,7 @@ function getLegalState(room, player) {
   const playableFaceUpIds =
     zones.includes("faceUp") ? getFaceUpCards(player).filter((card) => canPlayRank(room, card.rank)).map((card) => card.id) : [];
   const playableBlindIds = zones.includes("blind") ? getUnlockedBlindCards(player).map((card) => card.id) : [];
-  const canPickUp =
-    isYourTurn &&
-    room.discard.length > 0 &&
-    ((zone === "hand" && playableHandIds.length === 0) ||
-      ((zone === "faceUp" || zone === "table") && playableFaceUpIds.length === 0 && playableBlindIds.length === 0));
+  const canPickUp = isYourTurn && room.discard.length > 0 && zone !== "out";
 
   return {
     isYourTurn,
@@ -890,7 +933,7 @@ function getLegalState(room, player) {
     playableFaceUpIds,
     playableBlindIds,
     canPickUp,
-    needsFaceUpPickupChoice: canPickUp && (zone === "faceUp" || zone === "table"),
+    needsFaceUpPickupChoice: canPickUp && (zone === "faceUp" || zone === "table") && getFaceUpCards(player).length > 0,
   };
 }
 
@@ -907,6 +950,7 @@ module.exports = {
   makeRoomId,
   pickUpPile,
   playCards,
+  resetRound,
   serializeRoom,
   startGame,
 };

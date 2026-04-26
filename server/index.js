@@ -10,6 +10,7 @@ const {
   makeRoomId,
   pickUpPile,
   playCards,
+  resetRound,
   serializeRoom,
   startGame,
 } = require("./game");
@@ -76,6 +77,13 @@ io.on("connection", (socket) => {
   socket.on("pickUpPile", (payload, reply) => {
     withRoom(socket, reply, (room, playerId) => {
       pickUpPile(room, playerId, payload.faceUpCardId || null);
+      emitRoom(room);
+    });
+  });
+
+  socket.on("resetRound", (payload, reply) => {
+    withRoom(socket, reply, (room, playerId) => {
+      resetRound(room, playerId);
       emitRoom(room);
     });
   });

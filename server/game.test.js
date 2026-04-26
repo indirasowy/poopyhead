@@ -1,9 +1,12 @@
 const assert = require("assert");
 const {
   canPlayRank,
+  chooseFaceUp,
   createRoom,
   getEffectiveTop,
+  pickUpPile,
   playCards,
+  resetRound,
   serializeRoom,
 } = require("./game");
 
@@ -112,6 +115,19 @@ function makePlayingRoom() {
 
 {
   const room = makePlayingRoom();
+  room.discard = [card("4", "pile-4")];
+  room.players[0].table = [
+    { faceUp: card("K", "top-k-1"), blind: null },
+    { faceUp: card("K", "top-k-2"), blind: null },
+  ];
+  assert.throws(
+    () => playCards(room, "p1", "faceUp", ["top-k-1", "top-k-2"]),
+    /one at a time/
+  );
+}
+
+{
+  const room = makePlayingRoom();
   room.discard = [card("A", "a")];
   room.players[0].hand = [];
   room.players[0].table = [
@@ -122,6 +138,58 @@ function makePlayingRoom() {
   const view = serializeRoom(room, "p1");
   assert.equal(view.legal.canPickUp, true);
   assert.equal(view.legal.needsFaceUpPickupChoice, true);
+}
+
+{
+  const room = makePlayingRoom();
+  room.discard = [card("4", "pile-4")];
+  room.players[0].hand = [card("6", "playable-six")];
+  pickUpPile(room, "p1", null);
+  assert.deepEqual(
+    room.players[0].hand.map((handCard) => handCard.rank),
+    ["4", "6"]
+  );
+  assert.equal(room.discard.length, 0);
+  assert.equal(room.currentPlayerId, "p2");
+}
+
+{
+  const room = createRoom("RESET");
+  room.status = "finished";
+  room.hostId = "p1";
+  room.poopyheadId = "p2";
+  room.players = [
+    {
+      id: "p1",
+      name: "One",
+      connected: true,
+      hand: [],
+      faceUp: [],
+      blind: [],
+      table: [],
+      prepared: true,
+      out: true,
+    },
+    {
+      id: "p2",
+      name: "Two",
+      connected: true,
+      hand: [],
+      faceUp: [],
+      blind: [],
+      table: [],
+      prepared: true,
+      out: false,
+    },
+  ];
+  resetRound(room, "p1");
+  assert.equal(room.status, "setup");
+  assert.equal(room.preferredStarterId, "p2");
+  chooseFaceUp(room, "p1", room.players[0].hand.slice(0, 3).map((handCard) => handCard.id));
+  chooseFaceUp(room, "p2", room.players[1].hand.slice(0, 3).map((handCard) => handCard.id));
+  assert.equal(room.status, "playing");
+  assert.equal(room.currentPlayerId, "p2");
+  assert.equal(room.players[1].hand.some((handCard) => handCard.rank === "4"), true);
 }
 
 {
